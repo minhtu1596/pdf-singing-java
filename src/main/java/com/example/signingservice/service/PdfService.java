@@ -37,7 +37,7 @@ import java.util.regex.Pattern;
 @Service
 public class PdfService {
 
-    private static final int DEFAULT_SIGNATURE_PLACEHOLDER_SIZE = 16_384;
+    private static final int DEFAULT_SIGNATURE_PLACEHOLDER_SIZE = 32_768;
 
     private static final Path DEBUG_SIGNED_PDF_DIR = Path.of("target", "signed-debug");
 
@@ -88,6 +88,12 @@ public class PdfService {
                 PDDocument source = Loader.loadPDF(new RandomAccessReadBuffer(pdfBytes));
                 ByteArrayOutputStream normalizedOutput = new ByteArrayOutputStream()
         ) {
+            // A full rewrite breaks existing signatures. Keep already-signed PDFs as-is
+            // so next signatures can be appended incrementally.
+            if (!source.getSignatureDictionaries().isEmpty()) {
+                return pdfBytes;
+            }
+
             // Rewrite once to stabilize xref/stream layout before creating signature ByteRange.
             source.save(normalizedOutput);
             return normalizedOutput.toByteArray();
