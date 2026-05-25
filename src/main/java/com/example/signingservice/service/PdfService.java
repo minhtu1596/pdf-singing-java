@@ -53,6 +53,7 @@ public class PdfService {
 
         try (
                 PDDocument document = Loader.loadPDF(new RandomAccessReadBuffer(normalizedPdfBytes));
+//                PDDocument document = Loader.loadPDF(new RandomAccessReadBuffer(pdfBytes));
                 SignatureOptions signatureOptions = new SignatureOptions();
                 ByteArrayOutputStream outputStream = new ByteArrayOutputStream()
         ) {
