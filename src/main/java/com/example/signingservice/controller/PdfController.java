@@ -23,9 +23,7 @@ public class PdfController {
             @RequestBody PreparePdfRequest request
     ) throws Exception {
 
-        return pdfService.preparePdf(
-                request.getPdfBase64()
-        );
+        return pdfService.preparePdf(request);
     }
 
     @PostMapping("/embed-signature")

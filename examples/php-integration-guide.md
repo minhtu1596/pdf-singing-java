@@ -8,7 +8,17 @@ This document explains exactly what PHP must send to Java in each step.
 
 ```json
 {
-  "pdfBase64": "<base64 of original PDF bytes>"
+  "pdfBase64": "<base64 of original PDF bytes>",
+  "hashalg": "SHA256",
+  "typesignature": 0,
+  "signaturename": "Signature1",
+  "base64image": "<optional>",
+  "textout": "<optional>",
+  "pagesign": 1,
+  "xpoint": 50,
+  "ypoint": 50,
+  "width": 200,
+  "height": 60
 }
 ```
 
@@ -19,7 +29,8 @@ This document explains exactly what PHP must send to Java in each step.
 ```json
 {
   "preparedPdfBase64": "<base64 of PDF with signature placeholder>",
-  "hashBase64": "<base64 of SHA-256 hash to sign>"
+  "hashBase64": "<base64 hash to sign>",
+  "hashAlgorithm": "SHA-256"
 }
 ```
 

@@ -12,6 +12,8 @@ public class VerifySignatureResponse {
 
     private boolean messageDigestMatch;
 
+    private String digestAlgorithm;
+
     private String signedContentHashBase64;
 
     private String cmsMessageDigestBase64;
@@ -58,6 +60,14 @@ public class VerifySignatureResponse {
 
     public void setMessageDigestMatch(boolean messageDigestMatch) {
         this.messageDigestMatch = messageDigestMatch;
+    }
+
+    public String getDigestAlgorithm() {
+        return digestAlgorithm;
+    }
+
+    public void setDigestAlgorithm(String digestAlgorithm) {
+        this.digestAlgorithm = digestAlgorithm;
     }
 
     public String getSignedContentHashBase64() {

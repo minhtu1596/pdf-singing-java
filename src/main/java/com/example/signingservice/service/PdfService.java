@@ -1,6 +1,7 @@
 package com.example.signingservice.service;
 
 import com.example.signingservice.dto.EmbedSignatureResponse;
+import com.example.signingservice.dto.PreparePdfRequest;
 import com.example.signingservice.dto.PreparePdfResponse;
 import com.example.signingservice.dto.VerifySignatureResponse;
 import org.bouncycastle.asn1.ASN1OctetString;
@@ -15,14 +16,28 @@ import org.bouncycastle.cms.SignerInformationStore;
 import org.bouncycastle.cms.jcajce.JcaSimpleSignerInfoVerifierBuilder;
 import org.bouncycastle.util.Store;
 import org.apache.pdfbox.Loader;
+import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.io.RandomAccessReadBuffer;
 import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.PDPageContentStream;
+import org.apache.pdfbox.pdmodel.PDResources;
+import org.apache.pdfbox.pdmodel.common.PDRectangle;
+import org.apache.pdfbox.pdmodel.font.PDType1Font;
+import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
+import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
+import org.apache.pdfbox.pdmodel.interactive.annotation.PDAppearanceDictionary;
+import org.apache.pdfbox.pdmodel.interactive.annotation.PDAppearanceStream;
+import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotationWidget;
 import org.apache.pdfbox.pdmodel.interactive.digitalsignature.ExternalSigningSupport;
 import org.apache.pdfbox.pdmodel.interactive.digitalsignature.PDSignature;
 import org.apache.pdfbox.pdmodel.interactive.digitalsignature.SignatureOptions;
+import org.apache.pdfbox.pdmodel.interactive.form.PDAcroForm;
+import org.apache.pdfbox.pdmodel.interactive.form.PDField;
+import org.apache.pdfbox.pdmodel.interactive.form.PDSignatureField;
 import org.springframework.stereotype.Service;
 
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.security.MessageDigest;
 import java.util.Base64;
 import java.nio.file.Files;
@@ -31,6 +46,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -41,37 +57,49 @@ public class PdfService {
 
     private static final Path DEBUG_SIGNED_PDF_DIR = Path.of("target", "signed-debug");
 
+    private static final int TYPE_SIGNATURE_INVISIBLE = 0;
+    private static final int TYPE_SIGNATURE_TEXT = 1;
+    private static final int TYPE_SIGNATURE_IMAGE = 2;
+    private static final int TYPE_SIGNATURE_IMAGE_TEXT = 3;
+
+    private static final float DEFAULT_SIGNATURE_X = 36f;
+    private static final float DEFAULT_SIGNATURE_Y = 36f;
+    private static final float DEFAULT_SIGNATURE_WIDTH = 220f;
+    private static final float DEFAULT_SIGNATURE_HEIGHT = 70f;
+
     private static final Pattern BYTE_RANGE_PATTERN =
             Pattern.compile("/ByteRange\\s*\\[\\s*(\\d+)\\s+(\\d+)\\s+(\\d+)\\s+(\\d+)\\s*]");
 
-    public PreparePdfResponse preparePdf(
-            String pdfBase64
-    ) throws Exception {
+    public PreparePdfResponse preparePdf(PreparePdfRequest request) throws Exception {
 
-        byte[] pdfBytes = decodeBase64(pdfBase64, "pdfBase64");
+        byte[] pdfBytes = decodeBase64(request.getPdfBase64(), "pdfBase64");
         byte[] normalizedPdfBytes = normalizePdfForSigning(pdfBytes);
+        String hashAlgorithm = resolveHashAlgorithm(request.getHashalg());
 
         try (
                 PDDocument document = Loader.loadPDF(new RandomAccessReadBuffer(normalizedPdfBytes));
-//                PDDocument document = Loader.loadPDF(new RandomAccessReadBuffer(pdfBytes));
                 SignatureOptions signatureOptions = new SignatureOptions();
                 ByteArrayOutputStream outputStream = new ByteArrayOutputStream()
         ) {
             PDSignature signature = new PDSignature();
             signature.setFilter(PDSignature.FILTER_ADOBE_PPKLITE);
             signature.setSubFilter(PDSignature.SUBFILTER_ADBE_PKCS7_DETACHED);
-            signature.setName("External Signing");
+            signature.setName(nonBlank(request.getSignaturename(), "External Signing"));
             signature.setReason("Document signed");
             signature.setSignDate(java.util.GregorianCalendar.from(Instant.now().atZone(java.time.ZoneId.systemDefault())));
 
             signatureOptions.setPreferredSignatureSize(DEFAULT_SIGNATURE_PLACEHOLDER_SIZE);
             document.addSignature(signature, signatureOptions);
 
+            if (isVisibleSignature(request.getTypesignature())) {
+                applyVisibleSignatureAppearance(document, signature, request);
+            }
+
             ExternalSigningSupport externalSigning =
                     document.saveIncrementalForExternalSigning(outputStream);
 
             byte[] contentToSign = externalSigning.getContent().readAllBytes();
-            byte[] hash = MessageDigest.getInstance("SHA-256").digest(contentToSign);
+            byte[] hash = MessageDigest.getInstance(hashAlgorithm).digest(contentToSign);
 
             // Keep the reserved /Contents gap open by writing zero bytes as placeholder.
             externalSigning.setSignature(new byte[DEFAULT_SIGNATURE_PLACEHOLDER_SIZE]);
@@ -79,6 +107,7 @@ public class PdfService {
             PreparePdfResponse response = new PreparePdfResponse();
             response.setPreparedPdfBase64(Base64.getEncoder().encodeToString(outputStream.toByteArray()));
             response.setHashBase64(Base64.getEncoder().encodeToString(hash));
+            response.setHashAlgorithm(hashAlgorithm);
             return response;
         }
     }
@@ -128,8 +157,8 @@ public class PdfService {
             response.setByteRangeValid(true);
 
             byte[] signedContent = buildSignedContent(signedPdfBytes, byteRangeInfo);
-            byte[] signedContentHash = MessageDigest.getInstance("SHA-256").digest(signedContent);
-            response.setSignedContentHashBase64(Base64.getEncoder().encodeToString(signedContentHash));
+            byte[] fallbackHash = MessageDigest.getInstance("SHA-256").digest(signedContent);
+            response.setSignedContentHashBase64(Base64.getEncoder().encodeToString(fallbackHash));
 
             byte[] signatureBytes = extractSignatureBytes(signedPdfBytes, byteRangeInfo);
             CMSSignedData cmsSignedData = new CMSSignedData(new CMSProcessableByteArray(signedContent), signatureBytes);
@@ -141,6 +170,12 @@ public class PdfService {
             }
 
             SignerInformation signerInformation = signerInfos.getSigners().iterator().next();
+            String digestAlgorithm = mapDigestAlgorithmFromOid(signerInformation.getDigestAlgOID());
+            response.setDigestAlgorithm(digestAlgorithm);
+
+            byte[] signedContentHash = MessageDigest.getInstance(digestAlgorithm).digest(signedContent);
+            response.setSignedContentHashBase64(Base64.getEncoder().encodeToString(signedContentHash));
+
             byte[] cmsDigest = extractMessageDigestFromSignedAttributes(signerInformation);
             if (cmsDigest != null) {
                 response.setCmsMessageDigestBase64(Base64.getEncoder().encodeToString(cmsDigest));
@@ -164,6 +199,194 @@ public class PdfService {
             response.setValid(false);
             return response;
         }
+    }
+
+    private String resolveHashAlgorithm(String requestHashAlg) {
+        if (requestHashAlg == null || requestHashAlg.isBlank()) {
+            return "SHA-256";
+        }
+
+        String normalized = requestHashAlg.toUpperCase(Locale.ROOT).replace("-", "");
+        return switch (normalized) {
+            case "SHA1" -> "SHA-1";
+            case "SHA256" -> "SHA-256";
+            case "SHA512" -> "SHA-512";
+            default -> throw new IllegalArgumentException("Unsupported hashalg: " + requestHashAlg);
+        };
+    }
+
+    private boolean isVisibleSignature(Integer typeSignature) {
+        int type = typeSignature == null ? TYPE_SIGNATURE_INVISIBLE : typeSignature;
+        return type == TYPE_SIGNATURE_TEXT || type == TYPE_SIGNATURE_IMAGE || type == TYPE_SIGNATURE_IMAGE_TEXT;
+    }
+
+    private void applyVisibleSignatureAppearance(PDDocument document, PDSignature signature, PreparePdfRequest request) throws IOException {
+        PDSignatureField signatureField = findSignatureField(document, signature);
+        if (signatureField == null) {
+            throw new IllegalStateException("Could not locate signature field for appearance rendering");
+        }
+
+        PDAnnotationWidget widget = signatureField.getWidgets().isEmpty()
+                ? new PDAnnotationWidget()
+                : signatureField.getWidgets().get(0);
+
+        int pageIndex = resolvePageIndex(request.getPagesign(), document.getNumberOfPages());
+        PDPage page = document.getPage(pageIndex);
+
+        float x = request.getXpoint() == null ? DEFAULT_SIGNATURE_X : request.getXpoint();
+        float y = request.getYpoint() == null ? DEFAULT_SIGNATURE_Y : request.getYpoint();
+        float width = request.getWidth() == null ? DEFAULT_SIGNATURE_WIDTH : request.getWidth();
+        float height = request.getHeight() == null ? DEFAULT_SIGNATURE_HEIGHT : request.getHeight();
+
+        if (width <= 0 || height <= 0) {
+            throw new IllegalArgumentException("Signature rectangle width/height must be greater than 0");
+        }
+
+        PDRectangle rect = new PDRectangle(x, y, width, height);
+        widget.setRectangle(rect);
+        widget.setPage(page);
+        if (!page.getAnnotations().contains(widget)) {
+            page.getAnnotations().add(widget);
+        }
+
+        signatureField.setPartialName(nonBlank(request.getSignaturename(), signatureField.getPartialName()));
+        widget.setPrinted(true);
+
+        PDAppearanceStream appearanceStream = new PDAppearanceStream(document);
+        appearanceStream.setResources(new PDResources());
+        appearanceStream.setBBox(new PDRectangle(width, height));
+
+        int type = request.getTypesignature() == null ? TYPE_SIGNATURE_INVISIBLE : request.getTypesignature();
+        renderAppearanceStream(document, appearanceStream, request, type, width, height);
+
+        PDAppearanceDictionary appearanceDictionary = new PDAppearanceDictionary();
+        appearanceDictionary.setNormalAppearance(appearanceStream);
+        widget.setAppearance(appearanceDictionary);
+    }
+
+    private PDSignatureField findSignatureField(PDDocument document, PDSignature signature) throws IOException {
+        PDAcroForm acroForm = document.getDocumentCatalog().getAcroForm();
+        if (acroForm == null) {
+            return null;
+        }
+
+        for (PDField field : acroForm.getFieldTree()) {
+            if (field instanceof PDSignatureField sigField) {
+                PDSignature sig = sigField.getSignature();
+                if (sig != null && sig.getCOSObject() == signature.getCOSObject()) {
+                    return sigField;
+                }
+            }
+        }
+        return null;
+    }
+
+    private int resolvePageIndex(Integer pageSign, int totalPages) {
+        if (totalPages <= 0) {
+            throw new IllegalArgumentException("PDF has no pages");
+        }
+
+        if (pageSign == null) {
+            return totalPages - 1;
+        }
+
+        int page = pageSign;
+        if (page < 1 || page > totalPages) {
+            throw new IllegalArgumentException("pagesign is out of range, valid range is 1.." + totalPages);
+        }
+        return page - 1;
+    }
+
+    private void renderAppearanceStream(
+            PDDocument document,
+            PDAppearanceStream appearanceStream,
+            PreparePdfRequest request,
+            int type,
+            float width,
+            float height
+    ) throws IOException {
+        try (PDPageContentStream contentStream = new PDPageContentStream(document, appearanceStream)) {
+            contentStream.setNonStrokingColor(1f, 1f, 1f);
+            contentStream.addRect(0, 0, width, height);
+            contentStream.fill();
+
+            contentStream.setStrokingColor(0.15f, 0.15f, 0.15f);
+            contentStream.addRect(0, 0, width, height);
+            contentStream.stroke();
+
+            boolean drawImage = type == TYPE_SIGNATURE_IMAGE || type == TYPE_SIGNATURE_IMAGE_TEXT;
+            boolean drawText = type == TYPE_SIGNATURE_TEXT || type == TYPE_SIGNATURE_IMAGE_TEXT;
+
+            if (drawImage && request.getBase64image() != null && !request.getBase64image().isBlank()) {
+                byte[] imageBytes = decodeBase64(request.getBase64image(), "base64image");
+                PDImageXObject image = PDImageXObject.createFromByteArray(document, imageBytes, "signature-image");
+
+                float imgMaxW = drawText ? width * 0.45f : width - 10f;
+                float imgMaxH = height - 10f;
+                float ratio = Math.min(imgMaxW / image.getWidth(), imgMaxH / image.getHeight());
+                float imgW = image.getWidth() * ratio;
+                float imgH = image.getHeight() * ratio;
+                float imgX = 5f;
+                float imgY = (height - imgH) / 2f;
+                contentStream.drawImage(image, imgX, imgY, imgW, imgH);
+            }
+
+            if (drawText) {
+                String text = nonBlank(request.getTextout(), "Digitally signed");
+                float textX = (type == TYPE_SIGNATURE_IMAGE_TEXT) ? (width * 0.5f) : 8f;
+                float textWidth = width - textX - 8f;
+                drawTextLines(contentStream, text, textX, height - 18f, textWidth);
+            }
+        }
+    }
+
+    private void drawTextLines(PDPageContentStream contentStream, String text, float x, float y, float maxWidth) throws IOException {
+        PDType1Font font = new PDType1Font(Standard14Fonts.FontName.HELVETICA);
+        float fontSize = 9f;
+        float lineHeight = 12f;
+        int maxCharsPerLine = Math.max(1, (int) (maxWidth / 5.2f));
+
+        String normalized = text.replace("\r", "");
+        String[] rawLines = normalized.split("\n");
+
+        contentStream.setNonStrokingColor(0.08f, 0.08f, 0.08f);
+        contentStream.beginText();
+        contentStream.setFont(font, fontSize);
+        contentStream.newLineAtOffset(x, y);
+
+        int renderedLines = 0;
+        for (String rawLine : rawLines) {
+            String line = rawLine;
+            while (!line.isEmpty()) {
+                String chunk = line.length() > maxCharsPerLine ? line.substring(0, maxCharsPerLine) : line;
+                contentStream.showText(chunk);
+                renderedLines++;
+                if (renderedLines >= 5) {
+                    contentStream.endText();
+                    return;
+                }
+                contentStream.newLineAtOffset(0, -lineHeight);
+                line = line.length() > maxCharsPerLine ? line.substring(maxCharsPerLine) : "";
+            }
+        }
+
+        contentStream.endText();
+    }
+
+    private String nonBlank(String value, String fallback) {
+        if (value == null || value.isBlank()) {
+            return fallback;
+        }
+        return value;
+    }
+
+    private String mapDigestAlgorithmFromOid(String oid) {
+        return switch (oid) {
+            case "1.3.14.3.2.26" -> "SHA-1";
+            case "2.16.840.1.101.3.4.2.1" -> "SHA-256";
+            case "2.16.840.1.101.3.4.2.3" -> "SHA-512";
+            default -> "SHA-256";
+        };
     }
 
     private String saveSignedPdfForDebug(byte[] signedPdfBytes) {
@@ -288,7 +511,8 @@ public class PdfService {
 
     private X509CertificateHolder findSignerCertificate(CMSSignedData cmsSignedData, SignerInformation signerInformation) {
         Store<X509CertificateHolder> certificateStore = cmsSignedData.getCertificates();
-        Collection<X509CertificateHolder> certs = certificateStore.getMatches(signerInformation.getSID());
+        @SuppressWarnings("unchecked")
+        Collection<X509CertificateHolder> certs = certificateStore.getMatches((org.bouncycastle.util.Selector<X509CertificateHolder>) signerInformation.getSID());
         if (certs.isEmpty()) {
             return null;
         }

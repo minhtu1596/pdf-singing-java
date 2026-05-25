@@ -1,6 +1,7 @@
 package com.example.signingservice.service;
 
 import com.example.signingservice.dto.EmbedSignatureResponse;
+import com.example.signingservice.dto.PreparePdfRequest;
 import com.example.signingservice.dto.PreparePdfResponse;
 import com.example.signingservice.dto.VerifySignatureResponse;
 import org.apache.pdfbox.Loader;
@@ -26,9 +27,13 @@ class PdfServiceTest {
     void shouldPrepareAndEmbedSignature() throws Exception {
         PdfService service = new PdfService();
 
-        PreparePdfResponse prepared = service.preparePdf(SAMPLE_PDF_BASE64);
+        PreparePdfRequest prepareRequest = new PreparePdfRequest();
+        prepareRequest.setPdfBase64(SAMPLE_PDF_BASE64);
+
+        PreparePdfResponse prepared = service.preparePdf(prepareRequest);
         assertNotNull(prepared.getPreparedPdfBase64());
         assertNotNull(prepared.getHashBase64());
+        assertNotNull(prepared.getHashAlgorithm());
         assertFalse(prepared.getPreparedPdfBase64().isBlank());
         assertFalse(prepared.getHashBase64().isBlank());
 
@@ -64,7 +69,9 @@ class PdfServiceTest {
     void shouldVerifyAndReturnDiagnosticsForSignedPdf() throws Exception {
         PdfService service = new PdfService();
 
-        PreparePdfResponse prepared = service.preparePdf(SAMPLE_PDF_BASE64);
+        PreparePdfRequest prepareRequest = new PreparePdfRequest();
+        prepareRequest.setPdfBase64(SAMPLE_PDF_BASE64);
+        PreparePdfResponse prepared = service.preparePdf(prepareRequest);
         byte[] cmsSignature = new byte[512];
         for (int i = 0; i < cmsSignature.length; i++) {
             cmsSignature[i] = (byte) (i % 256);
@@ -81,6 +88,28 @@ class PdfServiceTest {
         assertTrue(verify.isByteRangeValid());
         assertNotNull(verify.getSignedContentHashBase64());
         assertFalse(verify.isValid());
+    }
+
+    @Test
+    void shouldPrepareWithVisibleTextSignature() throws Exception {
+        PdfService service = new PdfService();
+
+        PreparePdfRequest prepareRequest = new PreparePdfRequest();
+        prepareRequest.setPdfBase64(SAMPLE_PDF_BASE64);
+        prepareRequest.setTypesignature(1);
+        prepareRequest.setTextout("Signed by Test User");
+        prepareRequest.setPagesign(1);
+        prepareRequest.setXpoint(50);
+        prepareRequest.setYpoint(50);
+        prepareRequest.setWidth(200);
+        prepareRequest.setHeight(60);
+
+        PreparePdfResponse prepared = service.preparePdf(prepareRequest);
+        assertNotNull(prepared.getPreparedPdfBase64());
+
+        String preparedPdfText = new String(Base64.getDecoder().decode(prepared.getPreparedPdfBase64()));
+        assertTrue(preparedPdfText.contains("/AP"));
+        assertTrue(preparedPdfText.contains("/Rect"));
     }
 }
 

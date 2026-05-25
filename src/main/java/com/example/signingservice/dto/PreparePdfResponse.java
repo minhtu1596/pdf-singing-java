@@ -6,6 +6,8 @@ public class PreparePdfResponse {
 
     private String hashBase64;
 
+    private String hashAlgorithm;
+
     public String getPreparedPdfBase64() {
         return preparedPdfBase64;
     }
@@ -20,5 +22,13 @@ public class PreparePdfResponse {
 
     public void setHashBase64(String hashBase64) {
         this.hashBase64 = hashBase64;
+    }
+
+    public String getHashAlgorithm() {
+        return hashAlgorithm;
+    }
+
+    public void setHashAlgorithm(String hashAlgorithm) {
+        this.hashAlgorithm = hashAlgorithm;
     }
 }
