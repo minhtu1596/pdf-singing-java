@@ -1,10 +1,8 @@
 package com.example.signingservice.dto;
 
-public class EmbedSignatureResponse {
+public class VerifySignatureRequest {
 
     private String signedPdfBase64;
-
-    private String savedFilePath;
 
     public String getSignedPdfBase64() {
         return signedPdfBase64;
@@ -13,12 +11,5 @@ public class EmbedSignatureResponse {
     public void setSignedPdfBase64(String signedPdfBase64) {
         this.signedPdfBase64 = signedPdfBase64;
     }
-
-    public String getSavedFilePath() {
-        return savedFilePath;
-    }
-
-    public void setSavedFilePath(String savedFilePath) {
-        this.savedFilePath = savedFilePath;
-    }
 }
+
