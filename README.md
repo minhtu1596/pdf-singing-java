@@ -10,6 +10,17 @@ Spring Boot service for 2-step external PDF signing:
    - `savedFilePath` (server-side debug file path)
 3. `POST /verify-signature` validates a signed PDF and returns ByteRange/CMS diagnostics.
 
+All endpoints now return this common envelope:
+
+```json
+{
+  "success": true,
+  "message": "...",
+  "code": "SUCCESS",
+  "data": {}
+}
+```
+
 ## API payloads
 
 ### Prepare
@@ -26,9 +37,14 @@ Response:
 
 ```json
 {
-  "preparedPdfBase64": "<base64-prepared-pdf>",
-  "hashBase64": "<base64-hash>",
-  "hashAlgorithm": "SHA-256"
+  "success": true,
+  "message": "Prepare PDF successfully",
+  "code": "SUCCESS",
+  "data": {
+    "preparedPdfBase64": "<base64-prepared-pdf>",
+    "hashBase64": "<base64-hash>",
+    "hashAlgorithm": "SHA-256"
+  }
 }
 ```
 
@@ -57,8 +73,13 @@ Response:
 
 ```json
 {
-  "signedPdfBase64": "<base64-signed-pdf>",
-  "savedFilePath": "<absolute-path-on-java-server>"
+  "success": true,
+  "message": "Embed signature successfully",
+  "code": "SUCCESS",
+  "data": {
+    "signedPdfBase64": "<base64-signed-pdf>",
+    "savedFilePath": "<absolute-path-on-java-server>"
+  }
 }
 ```
 
@@ -76,15 +97,31 @@ Response:
 
 ```json
 {
-  "valid": true,
-  "byteRangeValid": true,
-  "cmsParsed": true,
-  "cmsSignatureValid": true,
-  "messageDigestMatch": true,
-  "signedContentHashBase64": "<base64-sha256>",
-  "cmsMessageDigestBase64": "<base64-from-cms-signed-attributes>",
-  "signerSubject": "CN=...",
-  "errorMessage": null
+  "success": true,
+  "message": "Verify signature completed",
+  "code": "SUCCESS",
+  "data": {
+    "valid": true,
+    "byteRangeValid": true,
+    "cmsParsed": true,
+    "cmsSignatureValid": true,
+    "messageDigestMatch": true,
+    "signedContentHashBase64": "<base64-sha256>",
+    "cmsMessageDigestBase64": "<base64-from-cms-signed-attributes>",
+    "signerSubject": "CN=...",
+    "errorMessage": null
+  }
+}
+```
+
+Error example:
+
+```json
+{
+  "success": false,
+  "message": "Invalid base64 in field: pdfBase64",
+  "code": "INVALID_REQUEST",
+  "data": null
 }
 ```
 

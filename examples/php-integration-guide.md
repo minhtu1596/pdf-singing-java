@@ -28,14 +28,19 @@ This document explains exactly what PHP must send to Java in each step.
 
 ```json
 {
-  "preparedPdfBase64": "<base64 of PDF with signature placeholder>",
-  "hashBase64": "<base64 hash to sign>",
-  "hashAlgorithm": "SHA-256"
+  "success": true,
+  "message": "Prepare PDF successfully",
+  "code": "SUCCESS",
+  "data": {
+    "preparedPdfBase64": "<base64 of PDF with signature placeholder>",
+    "hashBase64": "<base64 hash to sign>",
+    "hashAlgorithm": "SHA-256"
+  }
 }
 ```
 
-- `preparedPdfBase64`: temporary PDF containing placeholder + ByteRange
-- `hashBase64`: exact hash bytes that HSM must sign
+- `data.preparedPdfBase64`: temporary PDF containing placeholder + ByteRange
+- `data.hashBase64`: exact hash bytes that HSM must sign
 
 ## 2) Send hash to HSM/CyberSign
 
@@ -63,14 +68,19 @@ Then PHP must convert those signature bytes to base64 as `signatureBase64`.
 
 ```json
 {
-  "signedPdfBase64": "<base64 final signed PDF>",
-  "savedFilePath": "<absolute-path-on-java-server>"
+  "success": true,
+  "message": "Embed signature successfully",
+  "code": "SUCCESS",
+  "data": {
+    "signedPdfBase64": "<base64 final signed PDF>",
+    "savedFilePath": "<absolute-path-on-java-server>"
+  }
 }
 ```
 
-PHP decodes `signedPdfBase64` and writes bytes to output PDF file.
+PHP decodes `data.signedPdfBase64` and writes bytes to output PDF file.
 
-`savedFilePath` is a debug convenience path written by Java server to help quick manual testing.
+`data.savedFilePath` is a debug convenience path written by Java server to help quick manual testing.
 
 ## 4) Optional debug: call Java `/verify-signature`
 
@@ -83,11 +93,11 @@ If Adobe still reports issues, verify the produced signed PDF:
 ```
 
 Look at these fields in response:
-- `byteRangeValid`
-- `cmsParsed`
-- `cmsSignatureValid`
-- `messageDigestMatch`
-- `errorMessage`
+- `data.byteRangeValid`
+- `data.cmsParsed`
+- `data.cmsSignatureValid`
+- `data.messageDigestMatch`
+- `data.errorMessage`
 
 ## Minimal cURL examples
 

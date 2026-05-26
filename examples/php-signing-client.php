@@ -6,9 +6,9 @@ declare(strict_types=1);
  * Example PHP client for Java signing service (2-step external signing).
  *
  * Flow:
- * 1) Send pdfBase64 to /prepare-pdf -> receive preparedPdfBase64 + hashBase64
+ * 1) Send pdfBase64 to /prepare-pdf -> receive data.preparedPdfBase64 + data.hashBase64
  * 2) Send hashBase64 to HSM/CyberSign -> receive CMS/PKCS#7 signature bytes
- * 3) Send preparedPdfBase64 + signatureBase64 to /embed-signature -> receive signedPdfBase64
+ * 3) Send preparedPdfBase64 + signatureBase64 to /embed-signature -> receive data.signedPdfBase64
  */
 
 $javaBaseUrl = 'http://127.0.0.1:8080';
@@ -110,6 +110,20 @@ function postJson(string $url, array $payload): array
         throw new RuntimeException("HTTP {$status} from {$url}: {$raw}");
     }
 
-    return $decoded;
+    if (!isset($decoded['success']) || !array_key_exists('data', $decoded)) {
+        throw new RuntimeException("Invalid API envelope from {$url}: {$raw}");
+    }
+
+    if ($decoded['success'] !== true) {
+        $code = (string)($decoded['code'] ?? 'UNKNOWN_ERROR');
+        $message = (string)($decoded['message'] ?? 'Request failed');
+        throw new RuntimeException("API {$code}: {$message}");
+    }
+
+    if (!is_array($decoded['data'])) {
+        throw new RuntimeException("Missing/invalid data payload from {$url}: {$raw}");
+    }
+
+    return $decoded['data'];
 }
 
