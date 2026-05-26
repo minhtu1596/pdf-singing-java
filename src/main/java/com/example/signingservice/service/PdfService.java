@@ -226,6 +226,12 @@ public class PdfService {
             throw new IllegalStateException("Could not locate signature field for appearance rendering");
         }
 
+        int type = request.getTypesignature() == null ? TYPE_SIGNATURE_INVISIBLE : request.getTypesignature();
+        if ((type == TYPE_SIGNATURE_IMAGE || type == TYPE_SIGNATURE_IMAGE_TEXT)
+                && (request.getBase64image() == null || request.getBase64image().isBlank())) {
+            throw new IllegalArgumentException("base64image is required for typesignature=2 or 3");
+        }
+
         PDAnnotationWidget widget = signatureField.getWidgets().isEmpty()
                 ? new PDAnnotationWidget()
                 : signatureField.getWidgets().get(0);
@@ -249,14 +255,16 @@ public class PdfService {
             page.getAnnotations().add(widget);
         }
 
-        signatureField.setPartialName(nonBlank(request.getSignaturename(), signatureField.getPartialName()));
+        String uniqueFieldName = buildUniqueSignatureFieldName(document, request.getSignaturename(), signatureField.getPartialName());
+        if (uniqueFieldName != null) {
+            signatureField.setPartialName(uniqueFieldName);
+        }
         widget.setPrinted(true);
 
         PDAppearanceStream appearanceStream = new PDAppearanceStream(document);
         appearanceStream.setResources(new PDResources());
         appearanceStream.setBBox(new PDRectangle(width, height));
 
-        int type = request.getTypesignature() == null ? TYPE_SIGNATURE_INVISIBLE : request.getTypesignature();
         renderAppearanceStream(document, appearanceStream, request, type, width, height);
 
         PDAppearanceDictionary appearanceDictionary = new PDAppearanceDictionary();
@@ -279,6 +287,39 @@ public class PdfService {
             }
         }
         return null;
+    }
+
+    private String buildUniqueSignatureFieldName(PDDocument document, String requestedName, String fallbackName) throws IOException {
+        String baseName = requestedName == null || requestedName.isBlank() ? fallbackName : requestedName.trim();
+        if (baseName == null || baseName.isBlank()) {
+            return null;
+        }
+
+        PDAcroForm acroForm = document.getDocumentCatalog().getAcroForm();
+        if (acroForm == null) {
+            return baseName;
+        }
+
+        java.util.Set<String> existingNames = new java.util.HashSet<>();
+        for (PDField field : acroForm.getFieldTree()) {
+            String name = field.getFullyQualifiedName();
+            if (name != null && !name.isBlank()) {
+                existingNames.add(name);
+            }
+        }
+
+        if (!existingNames.contains(baseName)) {
+            return baseName;
+        }
+
+        int i = 2;
+        while (true) {
+            String candidate = baseName + "_" + i;
+            if (!existingNames.contains(candidate)) {
+                return candidate;
+            }
+            i++;
+        }
     }
 
     private int resolvePageIndex(Integer pageSign, int totalPages) {
