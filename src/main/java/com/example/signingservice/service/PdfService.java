@@ -351,10 +351,6 @@ public class PdfService {
             contentStream.addRect(0, 0, width, height);
             contentStream.fill();
 
-            contentStream.setStrokingColor(0.15f, 0.15f, 0.15f);
-            contentStream.addRect(0, 0, width, height);
-            contentStream.stroke();
-
             boolean drawImage = type == TYPE_SIGNATURE_IMAGE || type == TYPE_SIGNATURE_IMAGE_TEXT;
             boolean drawText = type == TYPE_SIGNATURE_TEXT || type == TYPE_SIGNATURE_IMAGE_TEXT;
 
