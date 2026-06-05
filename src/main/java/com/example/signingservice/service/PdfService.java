@@ -22,6 +22,8 @@ import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPageContentStream;
 import org.apache.pdfbox.pdmodel.PDResources;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
+import org.apache.pdfbox.pdmodel.font.PDFont;
+import org.apache.pdfbox.pdmodel.font.PDType0Font;
 import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
@@ -37,7 +39,9 @@ import org.apache.pdfbox.pdmodel.interactive.form.PDSignatureField;
 import org.springframework.stereotype.Service;
 
 import java.io.ByteArrayOutputStream;
+import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.io.InputStream;
 import java.security.MessageDigest;
 import java.util.Base64;
 import java.nio.file.Files;
@@ -351,10 +355,6 @@ public class PdfService {
             contentStream.addRect(0, 0, width, height);
             contentStream.fill();
 
-            contentStream.setStrokingColor(0.15f, 0.15f, 0.15f);
-            contentStream.addRect(0, 0, width, height);
-            contentStream.stroke();
-
             boolean drawImage = type == TYPE_SIGNATURE_IMAGE || type == TYPE_SIGNATURE_IMAGE_TEXT;
             boolean drawText = type == TYPE_SIGNATURE_TEXT || type == TYPE_SIGNATURE_IMAGE_TEXT;
 
@@ -362,27 +362,38 @@ public class PdfService {
                 byte[] imageBytes = decodeBase64(request.getBase64image(), "base64image");
                 PDImageXObject image = PDImageXObject.createFromByteArray(document, imageBytes, "signature-image");
 
-                float imgMaxW = drawText ? width * 0.45f : width - 10f;
+                float imgMaxW = width - 10f;
                 float imgMaxH = height - 10f;
                 float ratio = Math.min(imgMaxW / image.getWidth(), imgMaxH / image.getHeight());
                 float imgW = image.getWidth() * ratio;
                 float imgH = image.getHeight() * ratio;
-                float imgX = 5f;
+                float imgX = (width - imgW) / 2f;
                 float imgY = (height - imgH) / 2f;
                 contentStream.drawImage(image, imgX, imgY, imgW, imgH);
             }
 
             if (drawText) {
-                String text = nonBlank(request.getTextout(), "Digitally signed");
-                float textX = (type == TYPE_SIGNATURE_IMAGE_TEXT) ? (width * 0.5f) : 8f;
-                float textWidth = width - textX - 8f;
-                drawTextLines(contentStream, text, textX, height - 18f, textWidth);
+                String text = "Ký bởi: " + nonBlank(request.getTextout(), "Digitally signed") + "\n" +
+                              "Ngày ký: " + java.time.LocalDateTime.now(java.time.ZoneId.systemDefault())
+                                              .format(java.time.format.DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss"));
+                float textX = 8f;
+                float textWidth = width - 16f;
+
+                PDFont font;
+                try (InputStream fontStream = getClass().getResourceAsStream("/fonts/Arial.ttf")) {
+                    if (fontStream == null) {
+                        throw new FileNotFoundException("Font file Arial.ttf not found in resources");
+                    }
+                    font = PDType0Font.load(document, fontStream);
+                }
+
+                float textY = (type == TYPE_SIGNATURE_IMAGE_TEXT) ? 16f : (height / 2f) + 2f;
+                drawTextLines(contentStream, font, text, textX, textY, textWidth);
             }
         }
     }
 
-    private void drawTextLines(PDPageContentStream contentStream, String text, float x, float y, float maxWidth) throws IOException {
-        PDType1Font font = new PDType1Font(Standard14Fonts.FontName.HELVETICA);
+    private void drawTextLines(PDPageContentStream contentStream, PDFont font, String text, float x, float y, float maxWidth) throws IOException {
         float fontSize = 9f;
         float lineHeight = 12f;
         int maxCharsPerLine = Math.max(1, (int) (maxWidth / 5.2f));
@@ -390,7 +401,7 @@ public class PdfService {
         String normalized = text.replace("\r", "");
         String[] rawLines = normalized.split("\n");
 
-        contentStream.setNonStrokingColor(0.08f, 0.08f, 0.08f);
+        contentStream.setNonStrokingColor(0.0f, 0.5f, 0.0f);
         contentStream.beginText();
         contentStream.setFont(font, fontSize);
         contentStream.newLineAtOffset(x, y);

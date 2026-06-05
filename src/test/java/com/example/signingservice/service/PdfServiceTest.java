@@ -97,7 +97,7 @@ class PdfServiceTest {
         PreparePdfRequest prepareRequest = new PreparePdfRequest();
         prepareRequest.setPdfBase64(SAMPLE_PDF_BASE64);
         prepareRequest.setTypesignature(1);
-        prepareRequest.setTextout("Signed by Test User");
+        prepareRequest.setTextout("Ký bởi Tuấn");
         prepareRequest.setPagesign(1);
         prepareRequest.setXpoint(50);
         prepareRequest.setYpoint(50);
