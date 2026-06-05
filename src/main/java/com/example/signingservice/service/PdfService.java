@@ -103,6 +103,10 @@ public class PdfService {
             signature.setSignDate(java.util.GregorianCalendar.from(Instant.now().atZone(java.time.ZoneId.systemDefault())));
 
             signatureOptions.setPreferredSignatureSize(DEFAULT_SIGNATURE_PLACEHOLDER_SIZE);
+            if (isVisibleSignature(request.getTypesignature())) {
+                int pageIndex = resolvePageIndex(request.getPagesign(), document.getNumberOfPages());
+                signatureOptions.setPage(pageIndex);
+            }
             document.addSignature(signature, signatureOptions);
 
             if (isVisibleSignature(request.getTypesignature())) {
@@ -256,6 +260,13 @@ public class PdfService {
 
         int pageIndex = resolvePageIndex(request.getPagesign(), document.getNumberOfPages());
         PDPage page = document.getPage(pageIndex);
+
+        // Remove widget from any other pages' annotations to prevent duplicate visual rendering
+        if (!signatureField.getWidgets().isEmpty()) {
+            for (PDPage docPage : document.getPages()) {
+                docPage.getAnnotations().remove(widget);
+            }
+        }
 
         float x = request.getXpoint() == null ? DEFAULT_SIGNATURE_X : request.getXpoint();
         float y = request.getYpoint() == null ? DEFAULT_SIGNATURE_Y : request.getYpoint();
