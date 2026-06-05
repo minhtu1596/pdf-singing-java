@@ -50,9 +50,7 @@ class PdfServiceTest {
         assertNotNull(signed.getSignedPdfBase64());
         assertFalse(signed.getSignedPdfBase64().isBlank());
         assertNotEquals(prepared.getPreparedPdfBase64(), signed.getSignedPdfBase64());
-        assertNotNull(signed.getSavedFilePath());
-        assertFalse(signed.getSavedFilePath().isBlank());
-        assertTrue(Files.exists(Path.of(signed.getSavedFilePath())));
+        org.junit.jupiter.api.Assertions.assertNull(signed.getSavedFilePath());
 
         String signedPdfText = new String(Base64.getDecoder().decode(signed.getSignedPdfBase64()));
         assertTrue(signedPdfText.contains("/ByteRange"));
