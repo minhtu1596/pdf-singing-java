@@ -61,8 +61,6 @@ public class PdfService {
 
     private static final int DEFAULT_SIGNATURE_PLACEHOLDER_SIZE = 65_536;
 
-    private static final Path DEBUG_SIGNED_PDF_DIR = Path.of("target", "signed-debug");
-
     private static final int TYPE_SIGNATURE_INVISIBLE = 0;
     private static final int TYPE_SIGNATURE_TEXT = 1;
     private static final int TYPE_SIGNATURE_IMAGE = 2;
@@ -156,11 +154,10 @@ public class PdfService {
         byte[] signatureBytes = decodeBase64(signatureBase64, "signatureBase64");
 
         byte[] signedPdfBytes = injectSignature(preparedPdfBytes, signatureBytes);
-        String savedFilePath = saveSignedPdfForDebug(signedPdfBytes);
 
         EmbedSignatureResponse response = new EmbedSignatureResponse();
         response.setSignedPdfBase64(Base64.getEncoder().encodeToString(signedPdfBytes));
-        response.setSavedFilePath(savedFilePath);
+        response.setSavedFilePath(null);
         return response;
     }
 
@@ -450,18 +447,6 @@ public class PdfService {
         };
     }
 
-    private String saveSignedPdfForDebug(byte[] signedPdfBytes) {
-        try {
-            Files.createDirectories(DEBUG_SIGNED_PDF_DIR);
-            String filename = "signed-" + System.currentTimeMillis() + ".pdf";
-            Path outputPath = DEBUG_SIGNED_PDF_DIR.resolve(filename).toAbsolutePath().normalize();
-            Files.write(outputPath, signedPdfBytes);
-            return outputPath.toString();
-        } catch (Exception ex) {
-            throw new IllegalStateException("Could not save signed PDF for debug", ex);
-        }
-    }
-
     private byte[] decodeBase64(String value, String fieldName) {
         try {
             return Base64.getDecoder().decode(value);
@@ -491,11 +476,10 @@ public class PdfService {
         }
 
         String paddedHex = signatureHex + "0".repeat(hexCapacity - signatureHex.length());
-        byte[] signedPdf = preparedPdfBytes.clone();
         byte[] paddedHexBytes = paddedHex.getBytes(StandardCharsets.US_ASCII);
-        System.arraycopy(paddedHexBytes, 0, signedPdf, byteRangeInfo.gapStart + 1, paddedHexBytes.length);
+        System.arraycopy(paddedHexBytes, 0, preparedPdfBytes, byteRangeInfo.gapStart + 1, paddedHexBytes.length);
 
-        return signedPdf;
+        return preparedPdfBytes;
     }
 
     private ByteRangeInfo parseByteRangeInfo(byte[] pdfBytes) {
