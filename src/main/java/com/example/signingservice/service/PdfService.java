@@ -186,8 +186,13 @@ public class PdfService {
             String digestAlgorithm = mapDigestAlgorithmFromOid(signerInformation.getDigestAlgOID());
             response.setDigestAlgorithm(digestAlgorithm);
 
-            byte[] signedContentHash = MessageDigest.getInstance(digestAlgorithm).digest(signedContent);
-            response.setSignedContentHashBase64(Base64.getEncoder().encodeToString(signedContentHash));
+            byte[] signedContentHash;
+            if ("SHA-256".equals(digestAlgorithm)) {
+                signedContentHash = fallbackHash;
+            } else {
+                signedContentHash = MessageDigest.getInstance(digestAlgorithm).digest(signedContent);
+                response.setSignedContentHashBase64(Base64.getEncoder().encodeToString(signedContentHash));
+            }
 
             byte[] cmsDigest = extractMessageDigestFromSignedAttributes(signerInformation);
             if (cmsDigest != null) {
