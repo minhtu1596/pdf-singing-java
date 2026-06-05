@@ -38,10 +38,12 @@ import org.apache.pdfbox.pdmodel.interactive.form.PDField;
 import org.apache.pdfbox.pdmodel.interactive.form.PDSignatureField;
 import org.springframework.stereotype.Service;
 
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.HexFormat;
 import java.security.MessageDigest;
 import java.util.Base64;
 import java.nio.file.Files;
@@ -57,7 +59,7 @@ import java.util.regex.Pattern;
 @Service
 public class PdfService {
 
-    private static final int DEFAULT_SIGNATURE_PLACEHOLDER_SIZE = 32_768;
+    private static final int DEFAULT_SIGNATURE_PLACEHOLDER_SIZE = 65_536;
 
     private static final Path DEBUG_SIGNED_PDF_DIR = Path.of("target", "signed-debug");
 
@@ -71,8 +73,18 @@ public class PdfService {
     private static final float DEFAULT_SIGNATURE_WIDTH = 220f;
     private static final float DEFAULT_SIGNATURE_HEIGHT = 70f;
 
-    private static final Pattern BYTE_RANGE_PATTERN =
-            Pattern.compile("/ByteRange\\s*\\[\\s*(\\d+)\\s+(\\d+)\\s+(\\d+)\\s+(\\d+)\\s*]");
+    private static final byte[] ARIAL_FONT_BYTES;
+
+    static {
+        try (InputStream is = PdfService.class.getResourceAsStream("/fonts/Arial.ttf")) {
+            if (is == null) {
+                throw new FileNotFoundException("Font file Arial.ttf not found in resources");
+            }
+            ARIAL_FONT_BYTES = is.readAllBytes();
+        } catch (IOException e) {
+            throw new ExceptionInInitializerError("Failed to initialize Arial font: " + e.getMessage());
+        }
+    }
 
     public PreparePdfResponse preparePdf(PreparePdfRequest request) throws Exception {
 
@@ -380,10 +392,7 @@ public class PdfService {
                 float textWidth = width - 16f;
 
                 PDFont font;
-                try (InputStream fontStream = getClass().getResourceAsStream("/fonts/Arial.ttf")) {
-                    if (fontStream == null) {
-                        throw new FileNotFoundException("Font file Arial.ttf not found in resources");
-                    }
+                try (InputStream fontStream = new ByteArrayInputStream(ARIAL_FONT_BYTES)) {
                     font = PDType0Font.load(document, fontStream);
                 }
 
@@ -572,49 +581,88 @@ public class PdfService {
     }
 
     private long[] readByteRange(byte[] pdfBytes) {
-        // PDF tokens are ASCII-compatible; ISO_8859_1 preserves byte indexes 1:1.
-        String pdfText = new String(pdfBytes, StandardCharsets.ISO_8859_1);
-        Matcher matcher = BYTE_RANGE_PATTERN.matcher(pdfText);
+        byte[] target = "/ByteRange".getBytes(StandardCharsets.US_ASCII);
+        int index = lastIndexOf(pdfBytes, target);
+        if (index == -1) {
+            throw new IllegalArgumentException("Could not find /ByteRange in prepared PDF");
+        }
+        return parseByteRangeValues(pdfBytes, index + target.length);
+    }
 
-        long[] result = null;
-        while (matcher.find()) {
-            result = new long[4];
-            for (int i = 0; i < 4; i++) {
-                result[i] = Long.parseLong(matcher.group(i + 1));
+    private int lastIndexOf(byte[] array, byte[] target) {
+        if (target.length == 0) return 0;
+        outer:
+        for (int i = array.length - target.length; i >= 0; i--) {
+            for (int j = 0; j < target.length; j++) {
+                if (array[i + j] != target[j]) {
+                    continue outer;
+                }
             }
+            return i;
+        }
+        return -1;
+    }
+
+    private long[] parseByteRangeValues(byte[] pdfBytes, int startOffset) {
+        int i = startOffset;
+        int len = pdfBytes.length;
+
+        // 1. Skip whitespace until '['
+        while (i < len && isWhitespace(pdfBytes[i])) {
+            i++;
+        }
+        if (i >= len || pdfBytes[i] != '[') {
+            throw new IllegalArgumentException("Could not find opening bracket '[' after /ByteRange");
+        }
+        i++; // Skip '['
+
+        long[] result = new long[4];
+        for (int numIdx = 0; numIdx < 4; numIdx++) {
+            // Skip whitespace
+            while (i < len && isWhitespace(pdfBytes[i])) {
+                i++;
+            }
+            // Read digits
+            if (i >= len || !isDigit(pdfBytes[i])) {
+                throw new IllegalArgumentException("Expected digit in /ByteRange at offset " + i);
+            }
+            long val = 0;
+            while (i < len && isDigit(pdfBytes[i])) {
+                val = val * 10 + (pdfBytes[i] - '0');
+                i++;
+            }
+            result[numIdx] = val;
         }
 
-        if (result == null) {
-            throw new IllegalArgumentException("Could not find /ByteRange in prepared PDF");
+        // Skip whitespace until ']'
+        while (i < len && isWhitespace(pdfBytes[i])) {
+            i++;
+        }
+        if (i >= len || pdfBytes[i] != ']') {
+            throw new IllegalArgumentException("Could not find closing bracket ']' in /ByteRange");
         }
 
         return result;
     }
 
+    private boolean isWhitespace(byte b) {
+        return b == ' ' || b == '\t' || b == '\r' || b == '\n' || b == '\f' || b == 0;
+    }
+
+    private boolean isDigit(byte b) {
+        return b >= '0' && b <= '9';
+    }
+
     private String toHex(byte[] bytes) {
-        StringBuilder sb = new StringBuilder(bytes.length * 2);
-        for (byte value : bytes) {
-            sb.append(String.format("%02X", value));
-        }
-        return sb.toString();
+        return HexFormat.of().withUpperCase().formatHex(bytes);
     }
 
     private byte[] hexToBytes(String hex) {
-        int len = hex.length();
-        if ((len & 1) == 1) {
-            throw new IllegalArgumentException("Invalid hex signature length");
+        try {
+            return HexFormat.of().parseHex(hex);
+        } catch (IllegalArgumentException ex) {
+            throw new IllegalArgumentException("Embedded signature contains non-hex characters", ex);
         }
-
-        byte[] data = new byte[len / 2];
-        for (int i = 0; i < len; i += 2) {
-            int hi = Character.digit(hex.charAt(i), 16);
-            int lo = Character.digit(hex.charAt(i + 1), 16);
-            if (hi < 0 || lo < 0) {
-                throw new IllegalArgumentException("Embedded signature contains non-hex characters");
-            }
-            data[i / 2] = (byte) ((hi << 4) + lo);
-        }
-        return data;
     }
 
     private static class ByteRangeInfo {
