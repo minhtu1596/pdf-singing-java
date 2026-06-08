@@ -31,4 +31,14 @@ public class PreparePdfResponse {
     public void setHashAlgorithm(String hashAlgorithm) {
         this.hashAlgorithm = hashAlgorithm;
     }
+
+    private String test_cicd;
+
+    public String getTest_cicd() {
+        return test_cicd;
+    }
+
+    public void setTest_cicd(String test_cicd) {
+        this.test_cicd = test_cicd;
+    }
 }
