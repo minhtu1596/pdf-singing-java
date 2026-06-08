@@ -126,7 +126,7 @@ public class PdfService {
             response.setPreparedPdfBase64(Base64.getEncoder().encodeToString(outputStream.toByteArray()));
             response.setHashBase64(Base64.getEncoder().encodeToString(hash));
             response.setHashAlgorithm(hashAlgorithm);
-            // response.setTest_cicd("đã cập nhật");
+            response.setTest_cicd("đã cập nhật");
             return response;
         }
     }
@@ -465,6 +465,9 @@ public class PdfService {
     }
 
     private byte[] decodeBase64(String value, String fieldName) {
+        if (value == null) {
+            throw new IllegalArgumentException(fieldName + " is required and cannot be null");
+        }
         try {
             return Base64.getDecoder().decode(value);
         } catch (IllegalArgumentException ex) {
