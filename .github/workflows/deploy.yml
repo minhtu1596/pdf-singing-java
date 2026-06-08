@@ -21,6 +21,6 @@ jobs:
           key: ${{ secrets.AWS_SSH_KEY }}
           port: 22
           # Bơm toàn bộ nội dung file deploy.sh từ máy ảo GitHub vào thẳng server AWS để thực thi
-          script_stop_on_error: true
           script: |
-            bash -s < deploy.sh
+            cd /home/ubuntu/pdf-singing-java
+            bash deploy.sh
