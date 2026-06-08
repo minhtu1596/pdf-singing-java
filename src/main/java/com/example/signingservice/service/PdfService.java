@@ -126,8 +126,8 @@ public class PdfService {
             response.setPreparedPdfBase64(Base64.getEncoder().encodeToString(outputStream.toByteArray()));
             response.setHashBase64(Base64.getEncoder().encodeToString(hash));
             response.setHashAlgorithm(hashAlgorithm);
-            response.setTest_cicd("đã cập nhật");
-            return response;
+            // response.setTest_cicd("đã cập nhật");
+            return response;ing
         }
     }
 
