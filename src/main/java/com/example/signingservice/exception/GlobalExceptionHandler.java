@@ -24,10 +24,11 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(Exception.class)
-    public ResponseEntity<ApiResponse<Object>> handleException(Exception ignored) {
+    public ResponseEntity<ApiResponse<Object>> handleException(Exception ex) {
+        ex.printStackTrace();
         return ResponseEntity
                 .status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(ApiResponse.error("INTERNAL_ERROR", "Unexpected server error"));
+                .body(ApiResponse.error("INTERNAL_ERROR", "Unexpected server error: " + ex.getMessage()));
     }
 }
 
