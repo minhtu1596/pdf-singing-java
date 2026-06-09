@@ -26,6 +26,7 @@ public class PreparePdfResponse {
 
     public String getHashAlgorithm() {
         return hashAlgorithm;
+        //test
     }
 
     public void setHashAlgorithm(String hashAlgorithm) {
